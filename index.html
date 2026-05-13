@@ -160,7 +160,8 @@
       font-size: 0.8rem;
     }
     .btn-outline:hover { border-color: var(--text-dim); }
-    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.75rem; }
+    .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.75rem; touch-action: manipulation; }
+    .stock-btn { padding: 0.4rem 0.7rem; font-size: 1rem; min-width: 32px; min-height: 32px; touch-action: manipulation; cursor: pointer; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
     .btn-green { background: var(--green); }
     .btn-yellow { background: var(--yellow); color: #000; }
     .btn-blue { background: var(--blue); }
@@ -557,6 +558,20 @@
     
     function saveDB(db) {
       localStorage.setItem(DB_KEY, JSON.stringify(db));
+      showSaveIndicator();
+    }
+    
+    function showSaveIndicator() {
+      let el = document.getElementById('saveIndicator');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'saveIndicator';
+        el.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--green);color:#000;padding:0.5rem 1rem;border-radius:8px;font-size:0.8rem;font-weight:600;z-index:999;opacity:0;transition:opacity 0.3s';
+        document.body.appendChild(el);
+      }
+      el.textContent = '✓ Saved';
+      el.style.opacity = '1';
+      setTimeout(() => { el.style.opacity = '0'; }, 1500);
     }
     
     // TABS
@@ -921,10 +936,11 @@
           const stockLabel = i.stock === 0 ? ' (OUT)' : i.stock <= 5 ? ' (LOW)' : '';
           return `<tr>
           <td><strong>${i.name}</strong></td><td>${i.category}</td><td>${i.variant}</td>
-          <td style="${stockClass};font-weight:600">
-            <button class="btn-outline btn-sm" onclick="adjustStock('${i.id}', -1)" style="padding:0.2rem 0.5rem;margin-right:0.3rem">-</button>
-            ${i.stock}${stockLabel}
-            <button class="btn-outline btn-sm" onclick="adjustStock('${i.id}', 1)" style="padding:0.2rem 0.5rem;margin-left:0.3rem">+</button>
+          <td style="${stockClass};font-weight:600;white-space:nowrap">
+            <button class="stock-btn" onclick="adjustStock('${i.id}', -1)">−</button>
+            <span style="display:inline-block;min-width:30px;text-align:center;margin:0 0.3rem">${i.stock}</span>
+            <button class="stock-btn" onclick="adjustStock('${i.id}', 1)">+</button>
+            ${stockLabel ? '<br><small style="font-size:0.65rem">'+stockLabel.trim()+'</small>' : ''}
           </td>
           <td>${formatNpr(i.cost)}</td>
           <td>${formatNpr(i.stock * i.cost)}</td>
