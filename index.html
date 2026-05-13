@@ -1157,11 +1157,37 @@
     // EXPORT/IMPORT
     function exportData() {
       const db = getDB();
-      const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+      
+      // Orders CSV
+      let ordersCsv = 'ID,Customer,Phone,Location,Items,Amount,Shipping,Total,Status,Date,Notes\n';
+      db.orders.forEach(o => {
+        ordersCsv += `"${o.id}","${o.name}","${o.phone}","${o.location}","${o.items.replace(/"/g,'""')}",${o.amount},${o.shipping || 0},${o.amount + (o.shipping || 0)},"${o.status}","${formatDate(o.date)}","${(o.notes||'').replace(/"/g,'""')}"\n`;
+      });
+      
+      // Inventory CSV
+      let invCsv = 'Product,Category,Variant,Stock,Cost Price,Total Value\n';
+      db.inventory.forEach(i => {
+        invCsv += `"${i.name}","${i.category}","${i.variant}",${i.stock},${i.cost},${i.stock * i.cost}\n`;
+      });
+      
+      // Expenses CSV
+      let expCsv = 'Date,Description,Category,Amount\n';
+      db.expenses.forEach(e => {
+        expCsv += `"${formatDate(e.date)}","${e.desc}","${e.category}",${e.amount}\n`;
+      });
+      
+      const date = new Date().toISOString().split('T')[0];
+      downloadFile(`tfsp-orders-${date}.csv`, ordersCsv);
+      downloadFile(`tfsp-inventory-${date}.csv`, invCsv);
+      downloadFile(`tfsp-expenses-${date}.csv`, expCsv);
+    }
+    
+    function downloadFile(name, content) {
+      const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'tfsp-records-' + new Date().toISOString().split('T')[0] + '.json';
+      a.download = name;
       a.click();
       URL.revokeObjectURL(url);
     }
