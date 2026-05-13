@@ -828,29 +828,6 @@
       if (order) { order.status = status; saveDB(db); render(); }
     }
     
-    // DELETE
-    function deleteOrder(id) {
-      if (!confirm('Delete this order?')) return;
-      const db = getDB();
-      db.orders = db.orders.filter(o => o.id !== id);
-      saveDB(db);
-      render();
-    }
-    function deleteInventory(id) {
-      if (!confirm('Delete this item?')) return;
-      const db = getDB();
-      db.inventory = db.inventory.filter(i => i.id !== id);
-      saveDB(db);
-      render();
-    }
-    function deleteExpense(id) {
-      if (!confirm('Delete this expense?')) return;
-      const db = getDB();
-      db.expenses = db.expenses.filter(e => e.id !== id);
-      saveDB(db);
-      render();
-    }
-    
     // RENDER
     function render() {
       renderDashboard();
@@ -871,7 +848,7 @@
       document.getElementById('dashStats').innerHTML = `
         <div class="stat-card"><div class="label">Total Revenue</div><div class="value green">${formatNpr(totalRevenue)}</div></div>
         <div class="stat-card"><div class="label">Total Expenses</div><div class="value red">${formatNpr(totalExpenses)}</div></div>
-        <div class="stat-card"><div class="label">Profit</div><div class="value ${profit >= 0 ? 'blue' : 'red'}">${formatNpr(profit)}</div></div>
+        <div class="stat-card"><div class="label">Profit</div><div class="value ${profit >= 0 ? 'blue' : 'red'}">${formatNpr(Math.abs(profit))}</div></div>
         <div class="stat-card"><div class="label">Pending Orders</div><div class="value yellow">${pendingOrders}</div></div>
         <div class="stat-card"><div class="label">Total Orders</div><div class="value">${totalOrders}</div></div>
       `;
@@ -917,7 +894,7 @@
         const height = Math.max((Math.abs(m.profit) / maxVal) * 100, 2);
         const isNeg = m.profit < 0;
         return `<div class="chart-bar-wrap">
-          <div class="chart-bar-value">${m.profit >= 0 ? '' : '-'}Rs ${Math.abs(m.profit).toLocaleString('en-IN')}</div>
+          <div class="chart-bar-value">Rs ${Math.abs(m.profit).toLocaleString('en-IN')}</div>
           <div class="chart-bar ${isNeg ? 'negative' : ''}" style="height:${height}%"></div>
           <div class="chart-bar-label">${m.label}</div>
         </div>`;
@@ -969,6 +946,29 @@
       }
     }
     
+    // DELETE with safe ID handling
+    function deleteOrder(id) {
+      if (!confirm('Delete this order?')) return;
+      const db = getDB();
+      db.orders = db.orders.filter(o => o.id !== id);
+      saveDB(db);
+      render();
+    }
+    function deleteInventory(id) {
+      if (!confirm('Delete this item?')) return;
+      const db = getDB();
+      db.inventory = db.inventory.filter(i => i.id !== id);
+      saveDB(db);
+      render();
+    }
+    function deleteExpense(id) {
+      if (!confirm('Delete this expense?')) return;
+      const db = getDB();
+      db.expenses = db.expenses.filter(e => e.id !== id);
+      saveDB(db);
+      render();
+    }
+    
     function renderInventory() {
       const db = getDB();
       const catFilter = document.getElementById('invCategoryFilter')?.value || 'all';
@@ -1000,22 +1000,23 @@
       }
       document.getElementById('inventoryTable').innerHTML = `<table>
         <tr><th>Product</th><th>Category</th><th>Variant</th><th>Stock</th><th>Cost/Unit</th><th>Value</th><th>Actions</th></tr>
-        ${items.map(i => {
+        ${items.map((i, idx) => {
           const stockClass = i.stock === 0 ? 'color:var(--accent)' : i.stock <= 5 ? 'color:var(--yellow)' : 'color:var(--green)';
           const stockLabel = i.stock === 0 ? ' (OUT)' : i.stock <= 5 ? ' (LOW)' : '';
+          const safeId = i.id.replace(/'/g, "\\'");
           return `<tr>
           <td><strong>${i.name}</strong></td><td>${i.category}</td><td>${i.variant}</td>
           <td style="${stockClass};font-weight:600;white-space:nowrap">
-            <button class="stock-btn" onclick="adjustStock('${i.id}', -1)">−</button>
+            <button class="stock-btn" onclick="adjustStock('${safeId}', -1)">−</button>
             <span style="display:inline-block;min-width:30px;text-align:center;margin:0 0.3rem">${i.stock}</span>
-            <button class="stock-btn" onclick="adjustStock('${i.id}', 1)">+</button>
+            <button class="stock-btn" onclick="adjustStock('${safeId}', 1)">+</button>
             ${stockLabel ? '<br><small style="font-size:0.65rem">'+stockLabel.trim()+'</small>' : ''}
           </td>
           <td>${formatNpr(i.cost)}</td>
           <td>${formatNpr(i.stock * i.cost)}</td>
           <td style="white-space:nowrap">
-            <button class="btn btn-blue btn-sm" onclick="editInventory('${i.id}')">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteInventory('${i.id}')">×</button>
+            <button class="btn btn-blue btn-sm" onclick="editInventory('${safeId}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteInventory('${safeId}')">×</button>
           </td>
         </tr>`}).join('')}
       </table>`;
