@@ -335,7 +335,6 @@
         <div class="chart-legend">
           <span><div class="dot" style="background:var(--green)"></div> Revenue</span>
           <span><div class="dot" style="background:var(--accent)"></div> Expenses</span>
-          <span><div class="dot" style="background:var(--blue)"></div> Profit</span>
         </div>
       </div>
       <div class="section-header"><h2>Recent Orders</h2></div>
@@ -864,7 +863,6 @@
       document.getElementById('dashStats').innerHTML = `
         <div class="stat-card"><div class="label">Total Revenue</div><div class="value green">${formatNpr(totalRevenue)}</div></div>
         <div class="stat-card"><div class="label">Total Expenses</div><div class="value red">${formatNpr(totalExpenses)}</div></div>
-        <div class="stat-card"><div class="label">Profit</div><div class="value ${profit >= 0 ? 'blue' : 'red'}">${formatNpr(Math.abs(profit))}</div></div>
         <div class="stat-card"><div class="label">Pending Orders</div><div class="value yellow">${pendingOrders}</div></div>
         <div class="stat-card"><div class="label">Total Orders</div><div class="value">${totalOrders}</div></div>
       `;
@@ -963,7 +961,6 @@
         ${grid}
         ${makePath('rev', '#2ecc71')}
         ${makePath('exp', '#e63946')}
-        ${makePath('profit', '#3498db')}
         ${labels}
       </svg>`;
       
