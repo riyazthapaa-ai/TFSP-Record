@@ -549,83 +549,6 @@
       document.getElementById('lockScreen').classList.add('hidden');
     }
 
-    // JSONBIN CLOUD SYNC
-    const JSONBIN_KEY = '$2a$10$xZN483APLgMadivEojc0/.GVEHtySeohRxj49LMcVg49Yyh1BsoQa';
-    const BIN_ID_KEY = 'tfsp_bin_id';
-    
-    async function cloudSave() {
-      const db = getDB();
-      const binId = localStorage.getItem(BIN_ID_KEY);
-      try {
-        if (binId) {
-          await fetch('https://api.jsonbin.io/v3/b/' + binId, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY },
-            body: JSON.stringify(db)
-          });
-        } else {
-          const res = await fetch('https://api.jsonbin.io/v3/b', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY, 'X-Bin-Name': 'tfsp-records' },
-            body: JSON.stringify(db)
-          });
-          const data = await res.json();
-          if (data.metadata && data.metadata.id) {
-            localStorage.setItem(BIN_ID_KEY, data.metadata.id);
-          }
-        }
-        showSyncStatus('synced');
-      } catch(e) {
-        showSyncStatus('error');
-      }
-    }
-    
-    async function cloudLoad() {
-      const binId = localStorage.getItem(BIN_ID_KEY);
-      if (!binId) { 
-        // Try to find existing bin
-        try {
-          const res = await fetch('https://api.jsonbin.io/v3/c/uncategorized/bins', {
-            headers: { 'X-Master-Key': JSONBIN_KEY }
-          });
-          const bins = await res.json();
-          if (bins && bins.length > 0) {
-            localStorage.setItem(BIN_ID_KEY, bins[0].id);
-            return cloudLoad();
-          }
-        } catch(e) {}
-        showSyncStatus('no-data');
-        return; 
-      }
-      try {
-        const res = await fetch('https://api.jsonbin.io/v3/b/' + binId + '/latest', {
-          headers: { 'X-Master-Key': JSONBIN_KEY }
-        });
-        const data = await res.json();
-        if (data.record && data.record.orders) {
-          saveDBLocal(data.record);
-          render();
-          showSyncStatus('synced');
-        }
-      } catch(e) {
-        showSyncStatus('error');
-      }
-    }
-    
-    function showSyncStatus(status) {
-      const el = document.getElementById('syncStatus');
-      if (!el) return;
-      if (status === 'synced') { el.textContent = '☁ Synced'; el.style.color = 'var(--green)'; }
-      else if (status === 'error') { el.textContent = '☁ Offline'; el.style.color = 'var(--yellow)'; }
-      else if (status === 'saving') { el.textContent = '☁ Saving...'; el.style.color = 'var(--text-dim)'; }
-      else { el.textContent = '☁ New'; el.style.color = 'var(--text-dim)'; }
-    }
-    
-    // Save locally without triggering cloud sync (used during cloud load)
-    function saveDBLocal(db) {
-      localStorage.setItem(DB_KEY, JSON.stringify(db));
-    }
-
     // DATA STORE
     const DB_KEY = 'tfsp_records';
     
@@ -635,10 +558,13 @@
       return { orders: [], inventory: [], expenses: [] };
     }
     
+    function saveDBLocal(db) {
+      localStorage.setItem(DB_KEY, JSON.stringify(db));
+    }
+    
     function saveDB(db) {
       localStorage.setItem(DB_KEY, JSON.stringify(db));
       showSaveIndicator();
-      // Auto sync to cloud (debounced)
       clearTimeout(window._syncTimer);
       window._syncTimer = setTimeout(cloudSave, 2000);
     }
@@ -654,6 +580,71 @@
       el.textContent = '✓ Saved';
       el.style.opacity = '1';
       setTimeout(() => { el.style.opacity = '0'; }, 1500);
+    }
+
+    // JSONBIN CLOUD SYNC
+    const JSONBIN_KEY = '$2a$10$xZN483APLgMadivEojc0/.GVEHtySeohRxj49LMcVg49Yyh1BsoQa';
+    const BIN_ID_KEY = 'tfsp_bin_id';
+    
+    async function cloudSave() {
+      const db = getDB();
+      const binId = localStorage.getItem(BIN_ID_KEY);
+      showSyncStatus('saving');
+      try {
+        if (binId) {
+          const res = await fetch('https://api.jsonbin.io/v3/b/' + binId, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY },
+            body: JSON.stringify(db)
+          });
+          if (!res.ok) throw new Error('PUT failed');
+        } else {
+          const res = await fetch('https://api.jsonbin.io/v3/b', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY, 'X-Bin-Name': 'tfsp-records' },
+            body: JSON.stringify(db)
+          });
+          const data = await res.json();
+          if (data.metadata && data.metadata.id) {
+            localStorage.setItem(BIN_ID_KEY, data.metadata.id);
+          } else throw new Error('No bin ID');
+        }
+        showSyncStatus('synced');
+      } catch(e) {
+        console.error('Cloud save error:', e);
+        showSyncStatus('error');
+      }
+    }
+    
+    async function cloudLoad() {
+      const binId = localStorage.getItem(BIN_ID_KEY);
+      if (!binId) {
+        showSyncStatus('no-data');
+        return;
+      }
+      try {
+        const res = await fetch('https://api.jsonbin.io/v3/b/' + binId + '/latest', {
+          headers: { 'X-Master-Key': JSONBIN_KEY }
+        });
+        const data = await res.json();
+        if (data.record && data.record.orders) {
+          saveDBLocal(data.record);
+          render();
+          showSyncStatus('synced');
+        }
+      } catch(e) {
+        console.error('Cloud load error:', e);
+        showSyncStatus('error');
+      }
+    }
+    
+    function showSyncStatus(status) {
+      const el = document.getElementById('syncStatus');
+      if (!el) return;
+      if (status === 'synced') { el.textContent = '☁ Synced'; el.style.color = 'var(--green)'; }
+      else if (status === 'error') { el.textContent = '☁ Offline'; el.style.color = 'var(--yellow)'; }
+      else if (status === 'saving') { el.textContent = '☁ Saving...'; el.style.color = 'var(--text-dim)'; }
+      else { el.textContent = '☁ New'; el.style.color = 'var(--text-dim)'; }
     }
     
     // TABS
