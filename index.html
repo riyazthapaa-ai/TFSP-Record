@@ -125,17 +125,18 @@
       background: var(--surface2);
       border: 1px solid var(--border);
       color: var(--text-dim);
-      padding: 0.3rem 0.7rem;
+      padding: 0.4rem 0.9rem;
       border-radius: 6px;
-      font-size: 0.7rem;
+      font-size: 0.75rem;
       cursor: pointer;
+      transition: all 0.2s;
     }
     .chart-tabs button.active { background: var(--accent); color: white; border-color: var(--accent); }
-    .chart-canvas { position: relative; height: 180px; width: 100%; }
-    .chart-canvas svg { width: 100%; height: 100%; }
-    .chart-legend { display: flex; gap: 1rem; margin-top: 0.8rem; font-size: 0.7rem; color: var(--text-dim); }
-    .chart-legend span { display: flex; align-items: center; gap: 0.3rem; }
-    .chart-legend .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .chart-canvas { position: relative; height: 200px; width: 100%; padding: 0.5rem 0; }
+    .chart-canvas svg { width: 100%; height: 100%; overflow: visible; }
+    .chart-legend { display: flex; gap: 1.5rem; margin-top: 1rem; font-size: 0.75rem; color: var(--text-dim); }
+    .chart-legend span { display: flex; align-items: center; gap: 0.4rem; }
+    .chart-legend .dot { width: 10px; height: 10px; border-radius: 50%; }
     
     /* Section */
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
@@ -932,35 +933,50 @@
         }
       }
       
-      const maxVal = Math.max(...points.map(p => Math.max(p.rev, p.exp, Math.abs(p.profit))), 100);
-      const w = 100, h = 100;
-      const padL = 0, padR = 0, padT = 5, padB = 15;
+      const maxVal = Math.max(...points.map(p => Math.max(p.rev, p.exp)), 100);
+      const w = 400, h = 200;
+      const padL = 40, padR = 20, padT = 20, padB = 30;
       const chartW = w - padL - padR;
       const chartH = h - padT - padB;
       
       function toX(i) { return padL + (i / (points.length - 1)) * chartW; }
       function toY(val) { return padT + chartH - (val / maxVal) * chartH; }
       
-      function makePath(key, color) {
-        const pts = points.map((p, i) => `${toX(i)},${toY(Math.max(0, p[key]))}`);
-        return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                ${points.map((p, i) => `<circle cx="${toX(i)}" cy="${toY(Math.max(0, p[key]))}" r="2" fill="${color}"/>`).join('')}`;
+      function makeSmoothPath(key, color) {
+        const pts = points.map((p, i) => ({ x: toX(i), y: toY(Math.max(0, p[key])) }));
+        let path = `M${pts[0].x},${pts[0].y}`;
+        for (let i = 1; i < pts.length; i++) {
+          const cp1x = pts[i-1].x + (pts[i].x - pts[i-1].x) * 0.4;
+          const cp1y = pts[i-1].y;
+          const cp2x = pts[i].x - (pts[i].x - pts[i-1].x) * 0.4;
+          const cp2y = pts[i].y;
+          path += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${pts[i].x},${pts[i].y}`;
+        }
+        
+        // Area fill
+        const areaPath = path + ` L${pts[pts.length-1].x},${padT + chartH} L${pts[0].x},${padT + chartH} Z`;
+        
+        return `<path d="${areaPath}" fill="${color}" fill-opacity="0.08"/>
+                <path d="${path}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                ${pts.map(p => `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="${color}" stroke="var(--surface)" stroke-width="1.5"/>`).join('')}`;
       }
       
-      // Grid lines
+      // Grid lines with values
       let grid = '';
       for (let i = 0; i <= 4; i++) {
         const y = padT + (i / 4) * chartH;
-        grid += `<line x1="${padL}" y1="${y}" x2="${w}" y2="${y}" stroke="#2a2a2a" stroke-width="0.3"/>`;
+        const val = Math.round(maxVal - (i / 4) * maxVal);
+        grid += `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="#2a2a2a" stroke-width="0.5" stroke-dasharray="4,4"/>`;
+        grid += `<text x="${padL - 8}" y="${y + 3}" text-anchor="end" font-size="9" fill="#555">${val > 999 ? Math.round(val/1000) + 'k' : val}</text>`;
       }
       
       // X labels
-      let labels = points.map((p, i) => `<text x="${toX(i)}" y="${h - 2}" text-anchor="middle" font-size="3" fill="#8a8a8a">${p.label}</text>`).join('');
+      let labels = points.map((p, i) => `<text x="${toX(i)}" y="${h - 8}" text-anchor="middle" font-size="10" fill="#666">${p.label}</text>`).join('');
       
-      const svg = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      const svg = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet">
         ${grid}
-        ${makePath('rev', '#2ecc71')}
-        ${makePath('exp', '#e63946')}
+        ${makeSmoothPath('rev', '#2ecc71')}
+        ${makeSmoothPath('exp', '#e63946')}
         ${labels}
       </svg>`;
       
