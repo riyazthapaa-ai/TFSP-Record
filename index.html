@@ -345,9 +345,23 @@
     
     <!-- INVENTORY -->
     <div id="tab-inventory" class="tab-content">
+      <div class="stats" id="invStats"></div>
       <div class="section-header">
         <h2>Inventory</h2>
         <button class="btn" onclick="openModal('inventory')">+ Add Item</button>
+      </div>
+      <div class="filter-row">
+        <select id="invCategoryFilter" onchange="renderInventory()">
+          <option value="all">All Categories</option>
+          <option value="tees">Tees</option>
+          <option value="stickers">Stickers</option>
+          <option value="posters">Posters</option>
+        </select>
+        <select id="invStockFilter" onchange="renderInventory()">
+          <option value="all">All Stock</option>
+          <option value="low">Low Stock (≤5)</option>
+          <option value="out">Out of Stock</option>
+        </select>
       </div>
       <div class="table-wrap" id="inventoryTable"></div>
     </div>
@@ -860,22 +874,65 @@
       </table>`;
     }
     
+    // ADJUST STOCK
+    function adjustStock(id, delta) {
+      const db = getDB();
+      const item = db.inventory.find(i => i.id === id);
+      if (item) {
+        item.stock = Math.max(0, item.stock + delta);
+        saveDB(db);
+        renderInventory();
+      }
+    }
+    
     function renderInventory() {
       const db = getDB();
-      if (db.inventory.length === 0) {
-        document.getElementById('inventoryTable').innerHTML = '<div class="empty"><p>No inventory items. Add your stock!</p></div>';
+      const catFilter = document.getElementById('invCategoryFilter')?.value || 'all';
+      const stockFilter = document.getElementById('invStockFilter')?.value || 'all';
+      
+      // Stats
+      const totalItems = db.inventory.length;
+      const totalStock = db.inventory.reduce((s, i) => s + i.stock, 0);
+      const totalValue = db.inventory.reduce((s, i) => s + (i.stock * i.cost), 0);
+      const lowStock = db.inventory.filter(i => i.stock > 0 && i.stock <= 5).length;
+      const outOfStock = db.inventory.filter(i => i.stock === 0).length;
+      
+      document.getElementById('invStats').innerHTML = `
+        <div class="stat-card"><div class="label">Total Items</div><div class="value">${totalItems}</div></div>
+        <div class="stat-card"><div class="label">Total Units</div><div class="value blue">${totalStock}</div></div>
+        <div class="stat-card"><div class="label">Stock Value</div><div class="value green">${formatNpr(totalValue)}</div></div>
+        <div class="stat-card"><div class="label">Low Stock</div><div class="value yellow">${lowStock}</div></div>
+        <div class="stat-card"><div class="label">Out of Stock</div><div class="value red">${outOfStock}</div></div>
+      `;
+      
+      let items = db.inventory;
+      if (catFilter !== 'all') items = items.filter(i => i.category === catFilter);
+      if (stockFilter === 'low') items = items.filter(i => i.stock > 0 && i.stock <= 5);
+      if (stockFilter === 'out') items = items.filter(i => i.stock === 0);
+      
+      if (items.length === 0) {
+        document.getElementById('inventoryTable').innerHTML = '<div class="empty"><p>No inventory items found</p></div>';
         return;
       }
       document.getElementById('inventoryTable').innerHTML = `<table>
-        <tr><th>Product</th><th>Category</th><th>Variant</th><th>Stock</th><th>Cost/Unit</th><th>Actions</th></tr>
-        ${db.inventory.map(i => `<tr>
-          <td>${i.name}</td><td>${i.category}</td><td>${i.variant}</td>
-          <td>${i.stock}</td><td>${formatNpr(i.cost)}</td>
+        <tr><th>Product</th><th>Category</th><th>Variant</th><th>Stock</th><th>Cost/Unit</th><th>Value</th><th>Actions</th></tr>
+        ${items.map(i => {
+          const stockClass = i.stock === 0 ? 'color:var(--accent)' : i.stock <= 5 ? 'color:var(--yellow)' : 'color:var(--green)';
+          const stockLabel = i.stock === 0 ? ' (OUT)' : i.stock <= 5 ? ' (LOW)' : '';
+          return `<tr>
+          <td><strong>${i.name}</strong></td><td>${i.category}</td><td>${i.variant}</td>
+          <td style="${stockClass};font-weight:600">
+            <button class="btn-outline btn-sm" onclick="adjustStock('${i.id}', -1)" style="padding:0.2rem 0.5rem;margin-right:0.3rem">-</button>
+            ${i.stock}${stockLabel}
+            <button class="btn-outline btn-sm" onclick="adjustStock('${i.id}', 1)" style="padding:0.2rem 0.5rem;margin-left:0.3rem">+</button>
+          </td>
+          <td>${formatNpr(i.cost)}</td>
+          <td>${formatNpr(i.stock * i.cost)}</td>
           <td style="white-space:nowrap">
             <button class="btn btn-blue btn-sm" onclick="editInventory('${i.id}')">Edit</button>
             <button class="btn btn-danger btn-sm" onclick="deleteInventory('${i.id}')">×</button>
           </td>
-        </tr>`).join('')}
+        </tr>`}).join('')}
       </table>`;
     }
     
