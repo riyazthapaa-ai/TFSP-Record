@@ -249,6 +249,10 @@
     .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--accent); }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
     .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.5rem; }
+    .ord-item-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+    .ord-item-row select { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; color: var(--text); font-size: 0.8rem; }
+    .ord-item-row input { width: 60px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; color: var(--text); font-size: 0.8rem; text-align: center; }
+    .ord-item-row .remove-item { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 1rem; padding: 0.3rem; }
     
     /* Empty state */
     .empty { text-align: center; padding: 3rem; color: var(--text-dim); }
@@ -427,8 +431,9 @@
         </div>
       </div>
       <div class="form-group">
-        <label>Items (e.g. "2x The Crow Tee - White - L")</label>
-        <textarea id="ord-items" rows="3"></textarea>
+        <label>Items</label>
+        <div id="ord-items-list"></div>
+        <button type="button" class="btn-outline" onclick="addOrderItem()" style="margin-top:0.5rem;font-size:0.75rem">+ Add Item</button>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -674,6 +679,10 @@
       if (type === 'expense' && !document.getElementById('exp-edit-id').value) {
         document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
       }
+      if (type === 'order' && !document.getElementById('ord-edit-id').value) {
+        document.getElementById('ord-items-list').innerHTML = '';
+        addOrderItem();
+      }
     }
     function closeModal(type) {
       document.getElementById('modal-' + type).classList.remove('active');
@@ -681,9 +690,10 @@
       if (type === 'order') {
         document.getElementById('ord-edit-id').value = '';
         document.getElementById('orderModalTitle').textContent = 'New Order';
-        clearForm('ord', ['name','phone','location','items','amount','notes']);
+        clearForm('ord', ['name','phone','location','amount','notes']);
         document.getElementById('ord-shipping').value = '100';
         document.getElementById('ord-status').value = 'pending';
+        document.getElementById('ord-items-list').innerHTML = '';
       }
       if (type === 'inventory') {
         document.getElementById('inv-edit-id').value = '';
@@ -704,6 +714,59 @@
       return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
     }
     
+    // ORDER ITEMS DROPDOWN
+    function addOrderItem() {
+      const db = getDB();
+      const container = document.getElementById('ord-items-list');
+      const row = document.createElement('div');
+      row.className = 'ord-item-row';
+      const options = db.inventory.map(i => `<option value="${i.id}">${i.name} - ${i.variant} (${i.stock} left)</option>`).join('');
+      row.innerHTML = `
+        <select>${options.length ? options : '<option value="">No inventory items</option>'}</select>
+        <input type="number" value="1" min="1" placeholder="Qty">
+        <button type="button" class="remove-item" onclick="this.parentElement.remove();calcOrderTotal()">×</button>
+      `;
+      row.querySelector('select').addEventListener('change', calcOrderTotal);
+      row.querySelector('input').addEventListener('input', calcOrderTotal);
+      container.appendChild(row);
+      calcOrderTotal();
+    }
+    
+    function calcOrderTotal() {
+      const db = getDB();
+      const rows = document.querySelectorAll('#ord-items-list .ord-item-row');
+      let total = 0;
+      rows.forEach(row => {
+        const id = row.querySelector('select').value;
+        const qty = parseInt(row.querySelector('input').value) || 0;
+        const item = db.inventory.find(i => i.id === id);
+        if (item) total += item.cost * qty; // Use cost as selling price placeholder
+      });
+      // Don't auto-set amount - let user set it manually
+    }
+    
+    function getOrderItemsText() {
+      const db = getDB();
+      const rows = document.querySelectorAll('#ord-items-list .ord-item-row');
+      const items = [];
+      rows.forEach(row => {
+        const id = row.querySelector('select').value;
+        const qty = parseInt(row.querySelector('input').value) || 0;
+        const item = db.inventory.find(i => i.id === id);
+        if (item && qty > 0) items.push({ id, qty, text: `${qty}x ${item.name} - ${item.variant}` });
+      });
+      return items;
+    }
+    
+    function deductInventory(orderItems) {
+      const db = getDB();
+      orderItems.forEach(oi => {
+        const item = db.inventory.find(i => i.id === oi.id);
+        if (item) item.stock = Math.max(0, item.stock - oi.qty);
+      });
+      saveDB(db);
+    }
+
     // EDIT ORDER
     function editOrder(id) {
       const db = getDB();
@@ -726,11 +789,13 @@
     function saveOrder() {
       const db = getDB();
       const editId = document.getElementById('ord-edit-id').value;
+      const orderItems = getOrderItemsText();
+      const itemsText = orderItems.map(i => i.text).join(', ');
       const orderData = {
         name: document.getElementById('ord-name').value,
         phone: document.getElementById('ord-phone').value,
         location: document.getElementById('ord-location').value,
-        items: document.getElementById('ord-items').value,
+        items: itemsText,
         amount: Number(document.getElementById('ord-amount').value),
         shipping: Number(document.getElementById('ord-shipping').value),
         status: document.getElementById('ord-status').value,
@@ -748,6 +813,8 @@
           date: new Date().toISOString(),
         };
         db.orders.unshift(order);
+        // Deduct inventory for new orders
+        if (orderItems.length > 0) deductInventory(orderItems);
       }
       saveDB(db);
       closeModal('order');
@@ -786,7 +853,7 @@
         const idx = db.inventory.findIndex(i => i.id === editId);
         if (idx !== -1) { db.inventory[idx] = { ...db.inventory[idx], ...itemData }; }
       } else {
-        db.inventory.push({ id: 'INV-' + Date.now(), ...itemData });
+        db.inventory.unshift({ id: 'INV-' + Date.now(), ...itemData });
       }
       saveDB(db);
       closeModal('inventory');
@@ -823,7 +890,7 @@
         const idx = db.expenses.findIndex(e => e.id === editId);
         if (idx !== -1) { db.expenses[idx] = { ...db.expenses[idx], ...expData }; }
       } else {
-        db.expenses.push({ id: 'EXP-' + Date.now(), ...expData });
+        db.expenses.unshift({ id: 'EXP-' + Date.now(), ...expData });
       }
       saveDB(db);
       closeModal('expense');
@@ -1114,7 +1181,7 @@
         document.getElementById('expensesTable').innerHTML = '<div class="empty"><p>No expenses recorded</p></div>';
         return;
       }
-      const sorted = [...db.expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+      const sorted = db.expenses;
       document.getElementById('expensesTable').innerHTML = `<table>
         <tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th>Actions</th></tr>
         ${sorted.map(e => `<tr>
