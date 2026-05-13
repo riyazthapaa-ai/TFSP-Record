@@ -586,29 +586,56 @@
     const JSONBIN_KEY = '$2a$10$xZN483APLgMadivEojc0/.GVEHtySeohRxj49LMcVg49Yyh1BsoQa';
     const BIN_ID_KEY = 'tfsp_bin_id';
     
+    async function findOrCreateBin() {
+      let binId = localStorage.getItem(BIN_ID_KEY);
+      if (binId) return binId;
+      
+      // Search for existing bin by name
+      try {
+        const res = await fetch('https://api.jsonbin.io/v3/bins', {
+          headers: { 'X-Master-Key': JSONBIN_KEY }
+        });
+        if (res.ok) {
+          const bins = await res.json();
+          if (bins && bins.length > 0) {
+            // Use the first bin found
+            const id = bins[0].id || bins[0].record;
+            if (id) {
+              localStorage.setItem(BIN_ID_KEY, id);
+              return id;
+            }
+          }
+        }
+      } catch(e) {}
+      
+      // No existing bin — create one
+      try {
+        const res = await fetch('https://api.jsonbin.io/v3/b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY, 'X-Bin-Name': 'tfsp-records' },
+          body: JSON.stringify(getDB())
+        });
+        const data = await res.json();
+        if (data.metadata && data.metadata.id) {
+          localStorage.setItem(BIN_ID_KEY, data.metadata.id);
+          return data.metadata.id;
+        }
+      } catch(e) {}
+      return null;
+    }
+    
     async function cloudSave() {
       const db = getDB();
-      const binId = localStorage.getItem(BIN_ID_KEY);
       showSyncStatus('saving');
       try {
-        if (binId) {
-          const res = await fetch('https://api.jsonbin.io/v3/b/' + binId, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY },
-            body: JSON.stringify(db)
-          });
-          if (!res.ok) throw new Error('PUT failed');
-        } else {
-          const res = await fetch('https://api.jsonbin.io/v3/b', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY, 'X-Bin-Name': 'tfsp-records' },
-            body: JSON.stringify(db)
-          });
-          const data = await res.json();
-          if (data.metadata && data.metadata.id) {
-            localStorage.setItem(BIN_ID_KEY, data.metadata.id);
-          } else throw new Error('No bin ID');
-        }
+        const binId = await findOrCreateBin();
+        if (!binId) throw new Error('No bin');
+        const res = await fetch('https://api.jsonbin.io/v3/b/' + binId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_KEY },
+          body: JSON.stringify(db)
+        });
+        if (!res.ok) throw new Error('PUT failed');
         showSyncStatus('synced');
       } catch(e) {
         console.error('Cloud save error:', e);
@@ -617,12 +644,10 @@
     }
     
     async function cloudLoad() {
-      const binId = localStorage.getItem(BIN_ID_KEY);
-      if (!binId) {
-        showSyncStatus('no-data');
-        return;
-      }
+      showSyncStatus('saving');
       try {
+        const binId = await findOrCreateBin();
+        if (!binId) { showSyncStatus('no-data'); return; }
         const res = await fetch('https://api.jsonbin.io/v3/b/' + binId + '/latest', {
           headers: { 'X-Master-Key': JSONBIN_KEY }
         });
@@ -631,6 +656,8 @@
           saveDBLocal(data.record);
           render();
           showSyncStatus('synced');
+        } else {
+          showSyncStatus('no-data');
         }
       } catch(e) {
         console.error('Cloud load error:', e);
